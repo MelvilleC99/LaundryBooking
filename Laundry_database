@@ -1,0 +1,71 @@
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const sqlite3 = require('sqlite3').verbose();
+
+const app = express();
+const PORT = 3001;
+
+// Middleware
+app.use(cors());
+app.use(bodyParser.json());
+
+// Setup SQLite database
+const db = new sqlite3.Database('./appointments.db', (err) => {
+  if (err) {
+    console.error('Error opening database:', err.message);
+  } else {
+    console.log('Connected to the SQLite database.');
+    db.run(`CREATE TABLE IF NOT EXISTS appointments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      cellNumber TEXT NOT NULL,
+      referenceNumber TEXT NOT NULL,
+      dropOffTime TEXT NOT NULL,
+      collectionTime TEXT NOT NULL
+    )`, (err) => {
+      if (err) {
+        console.error('Error creating table:', err.message);
+      }
+    });
+  }
+});
+
+// Function to calculate collection time
+function calculateCollectionTime(slot) {
+  const [hour, minute] = slot.split(':').map(Number);
+  let collectionHour = hour + 2;
+  if (collectionHour >= 18) {
+    return '09:00 tomorrow';
+  } else {
+    return `${collectionHour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+  }
+}
+
+// POST endpoint for creating an appointment
+app.post('/api/appointments', (req, res) => {
+  console.log('POST request received at /api/appointments');
+  const { name, cellNumber, selectedSlot } = req.body;
+
+  if (!name || !cellNumber || !selectedSlot) {
+    return res.status(400).json({ error: 'All fields are required' });
+  }
+
+  const referenceNumber = Math.floor(1000 + Math.random() * 9000).toString();
+  const dropOffTime = selectedSlot;
+  const collectionTime = calculateCollectionTime(selectedSlot);
+
+  const query = `INSERT INTO appointments (name, cellNumber, referenceNumber, dropOffTime, collectionTime) VALUES (?, ?, ?, ?, ?)`;
+  db.run(query, [name, cellNumber, referenceNumber, dropOffTime, collectionTime], function (err) {
+    if (err) {
+      console.error('Error saving appointment:', err.message);
+      return res.status(500).send('Error saving appointment');
+    }
+    res.status(200).send('Appointment saved');
+  });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
